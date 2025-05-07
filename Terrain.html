@@ -1,0 +1,219 @@
+<!-- Ethan Wight -->
+<!-- 5/6/2025 -->
+
+<!DOCTYPE html>
+<html>
+
+<body>
+<!-- Main canvas element where the 3D scene will be rendered -->
+<canvas id="gl-canvas" width="512" height="512">
+Oops ... your browser doesn't support the HTML5 canvas element
+</canvas>
+
+<!-- User controls information -->
+<div style="margin-top: 20px;">
+    <p>Controls: W/S - Forward/Back, A/D - Left/Right, Q/E - Up/Down, Space - Toggle Auto-Flight</p>
+</div>
+
+<!-- Vertex Shader: Processes each vertex of the 3D model -->
+<script id="vertex-shader" type="x-shader/x-vertex">
+precision mediump float;
+
+// Input attributes from JavaScript
+attribute vec4 vPosition;  // Vertex position in 3D space
+attribute vec4 vColor;     // Vertex color
+varying vec4 fColor;       // Color passed to fragment shader
+varying float fHeight;     // Height passed to fragment shader
+varying vec3 fNormal;      // Normal vector passed to fragment shader
+varying vec2 fTexCoord;    // Texture coordinates passed to fragment shader
+
+// Uniform variables (constant across all vertices)
+uniform mat4 modelView;    // Model-view transformation matrix
+uniform mat4 projection;   // Projection matrix
+uniform float time;        // Current time for animations
+uniform float trunkWidth;  // Width of tree trunks
+uniform float baseY;       // Base Y coordinate for trees
+
+void main() 
+{
+    vec4 pos = vPosition;
+    
+    // Create wave animation for water vertices
+    // Only affects vertices exactly at water level (y = -0.1)
+    if (abs(vPosition.y + 0.1) < 0.0001) {
+        // Three different wave patterns combined for natural water movement
+        float wave1 = sin(vPosition.x * 3.0 + time * 0.8) * 0.02;
+        float wave2 = sin(vPosition.z * 3.0 + time * 1.0) * 0.02;
+        float wave3 = sin((vPosition.x + vPosition.z) * 2.0 + time * 0.6) * 0.01;
+        pos.y += wave1 + wave2 + wave3;
+    }
+    
+    // Transform vertex position to clip space
+    gl_Position = projection * modelView * pos;
+    
+    // Pass varying variables to fragment shader
+    fHeight = pos.y;
+    fColor = vColor;
+    fTexCoord = vec2(vPosition.x, vPosition.z) * 0.5;
+    
+    // Calculate normals based on the type of geometry
+    if (vColor.g > 0.5 && vColor.r < 0.3) {  // Tree foliage
+        // Foliage normals point slightly outward from center
+        vec3 toCenter = normalize(vec3(0.0, -1.0, 0.0));
+        vec3 radial = normalize(vec3(vPosition.x, 0.0, vPosition.z));
+        fNormal = normalize(mix(toCenter, radial, 0.5));
+    } else if (vColor.r > 0.4 && vColor.g < 0.3) {  // Tree trunk
+        // Trunk normals point outward from each face
+        if (abs(vPosition.z + trunkWidth) < 0.001 || abs(vPosition.z - trunkWidth) < 0.001) {
+            fNormal = vec3(0.0, 0.0, sign(vPosition.z));
+        }
+        else if (abs(vPosition.x + trunkWidth) < 0.001 || abs(vPosition.x - trunkWidth) < 0.001) {
+            fNormal = vec3(sign(vPosition.x), 0.0, 0.0);
+        }
+        else {
+            fNormal = vec3(0.0, sign(vPosition.y - baseY), 0.0);
+        }
+    } else {  // Terrain
+        // Terrain normals point upward
+        fNormal = normalize(vec3(0.0, 1.0, 0.0));
+    }
+} 
+</script>
+
+<!-- Fragment Shader: Processes each pixel of the rendered image -->
+<script id="fragment-shader" type="x-shader/x-fragment">
+precision mediump float;
+
+// Input from vertex shader
+varying vec4 fColor;
+varying float fHeight;
+varying vec3 fNormal;
+varying vec2 fTexCoord;
+
+// Uniform variables
+uniform float time;
+uniform mat4 modelView;
+uniform int timeOfDay;
+
+// Material properties for Phong lighting
+struct Material {
+    vec3 ambient;     // Ambient color component
+    vec3 diffuse;     // Diffuse color component
+    vec3 specular;    // Specular color component
+    float shininess;  // Surface shininess factor
+};
+
+// Light source position in world space
+vec3 getLightPosition() {
+    return vec3(0.0, 5.0, 0.0);  // Fixed noon position
+}
+
+// Light color properties
+vec3 getLightColor() {
+    return vec3(1.0, 1.0, 1.0);  // Pure white light for noon
+}
+
+// Material definitions for different surface types
+Material terrainMaterial = Material(
+    vec3(0.2, 0.2, 0.2),  // Dark gray ambient
+    vec3(1.0, 1.0, 1.0),  // White diffuse
+    vec3(0.1, 0.1, 0.1),  // Dark specular
+    8.0                    // Moderate shininess
+);
+
+Material waterMaterial = Material(
+    vec3(0.0, 0.1, 0.2),  // Dark blue ambient
+    vec3(0.0, 0.3, 0.8),  // Blue diffuse
+    vec3(0.5, 0.5, 0.8),  // Light blue specular
+    128.0                  // Very shiny surface
+);
+
+Material skyMaterial = Material(
+    vec3(0.6, 0.8, 1.0),  // Light blue ambient
+    vec3(0.6, 0.8, 1.0),  // Light blue diffuse
+    vec3(0.0, 0.0, 0.0),  // No specular reflection
+    1.0                    // Low shininess
+);
+
+// Phong lighting calculation
+vec3 calculatePhongLighting(vec3 position, vec3 normal, Material material) {
+    vec3 lightPosition = getLightPosition();
+    vec3 lightColor = getLightColor();
+    
+    // Calculate lighting vectors
+    vec3 N = normalize(normal);           // Surface normal
+    vec3 L = normalize(lightPosition - position);  // Light direction
+    vec3 V = normalize(-position);        // View direction
+    vec3 R = reflect(-L, N);              // Reflection vector
+    
+    // Ambient lighting
+    vec3 ambient = material.ambient * lightColor;
+    
+    // Diffuse lighting
+    float diff = max(dot(N, L), 0.0);
+    vec3 diffuse = diff * material.diffuse * lightColor;
+    
+    // Specular lighting
+    float spec = pow(max(dot(V, R), 0.0), material.shininess);
+    vec3 specular = spec * material.specular * lightColor;
+    
+    // Combine all lighting components
+    return ambient + diffuse + specular;
+}
+
+void main()
+{
+    float waterLevel = -0.1;
+    vec3 position = vec3(fTexCoord.x, fHeight, fTexCoord.y);
+    vec3 normal = normalize(fNormal);
+    
+    // Sky rendering (top of the scene)
+    if(fHeight > 1.5) {
+        // Gradient from light blue to bright blue
+        vec3 skyColor = mix(
+            vec3(0.7, 0.8, 0.9),  // Light blue at bottom
+            vec3(0.6, 0.8, 1.0),  // Bright blue at top
+            (fHeight - 1.5) / 2.0
+        );
+        gl_FragColor = vec4(skyColor, 1.0);
+    }
+    // Tree foliage rendering
+    else if(fColor.g > 0.5 && fColor.r < 0.3) {
+        gl_FragColor = fColor;
+    }
+    // Tree trunk rendering
+    else if(fColor.r > 0.4 && fColor.g < 0.3) {
+        gl_FragColor = fColor;
+    }
+    // Water rendering
+    else if(abs(fHeight - waterLevel) < 0.05) {
+        // Add wave-based normal variation for water surface
+        normal = normalize(vec3(
+            sin(fTexCoord.x * 4.0 + time * 0.8) * 0.1,
+            1.0,
+            sin(fTexCoord.y * 4.0 + time * 1.0) * 0.1
+        ));
+        vec3 lighting = calculatePhongLighting(position, normal, waterMaterial);
+        gl_FragColor = vec4(lighting, 1.0);
+    }
+    // Terrain rendering
+    else if(fHeight > waterLevel) {
+        vec3 lighting = calculatePhongLighting(position, normal, terrainMaterial);
+        gl_FragColor = vec4(lighting * fColor.rgb, 1.0);
+    }
+    // Underwater rendering
+    else {
+        vec3 lighting = calculatePhongLighting(position, normal, waterMaterial);
+        gl_FragColor = vec4(lighting, 1.0);
+    }
+}
+</script>
+
+<!-- External JavaScript files -->
+<script type="text/javascript" src="webgl-utils.js"></script>
+<script type="text/javascript" src="initShaders.js"></script>
+<script type="text/javascript" src="MV.js"></script>
+<script type="text/javascript" src="Terrain.js"></script>
+
+</body>
+</html>
