@@ -1,7 +1,6 @@
 # CMSC410 Final Project: Procedural Terrain Rendering with Interactive Camera
 
 **Author:** Ethan Wight  
-**Course:** CMSC 410 - Computer Graphics  
 **Date:** May 6, 2025
 
 ## 📌 Project Overview
