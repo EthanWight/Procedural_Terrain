@@ -65,7 +65,3 @@ This project satisfies the following key requirements from **CMSC410 Project 4**
 
 - Performance may lag on lower-end systems due to high vertex counts (e.g., 512x512 terrain).
 - Camera can clip through objects if moved too quickly.
-
-## 📧 Contact
-
-For questions or suggestions, contact **Ethan Wight** at ethanwight26@gmail.com.
