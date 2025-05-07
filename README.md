@@ -59,8 +59,3 @@ This project satisfies the following key requirements from **CMSC410 Project 4**
 ✅ Skybox interpolation and water with wavy animation  
 ✅ Phong lighting model with variable material properties  
 ✅ Scene composition with trees, rocks, and a house  
-
-## 🧪 Known Issues
-
-- Performance may lag on lower-end systems due to high vertex counts (e.g., 512x512 terrain).
-- Camera can clip through objects if moved too quickly.
